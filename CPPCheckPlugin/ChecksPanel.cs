@@ -150,23 +150,8 @@ namespace VSPackage.CPPCheckPlugin
 		{
 			using (var process = new System.Diagnostics.Process())
 			{
-				var startInfo = process.StartInfo;
-				startInfo.UseShellExecute = false;
-				startInfo.CreateNoWindow = true;
-				startInfo.RedirectStandardOutput = true;
-				startInfo.FileName = AnalyzerCppcheck.cppcheckExePath();
-				startInfo.WorkingDirectory = Path.GetDirectoryName(startInfo.FileName);
-				startInfo.Arguments = "--errorlist --xml-version=2";
-				process.Start();
-				String output;
-				using (var outputStream = process.StandardOutput)
-				{
-					output = outputStream.ReadToEnd();
-				}
-				process.WaitForExit();
-
 				var checksList = new XmlDocument();
-				checksList.LoadXml(output);
+				checksList.LoadXml("");
 				return checksList;
 			}
 		}

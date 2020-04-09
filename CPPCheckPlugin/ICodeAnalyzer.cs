@@ -4,322 +4,527 @@ using EnvDTE;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Collections.Specialized;
+using System.Linq;
+using System.Text;
 
 namespace VSPackage.CPPCheckPlugin
 {
-	public abstract class ICodeAnalyzer : IDisposable
-	{
-		public enum SuppressionScope
-		{
-			suppressThisMessage,
-			suppressThisMessageSolutionWide,
-			suppressThisMessageGlobally,
-			suppressThisTypeOfMessageFileWide,
-			suppressThisTypeOfMessageProjectWide,
-			suppressThisTypeOfMessagesSolutionWide,
-			suppressThisTypeOfMessagesGlobally,
-			suppressAllMessagesThisFileProjectWide,
-			suppressAllMessagesThisFileSolutionWide,
-			suppressAllMessagesThisFileGlobally
-		};
+    using System.Threading;
+    public class ThreadAbortException : Exception
+    {
+        public ThreadAbortException()
+        {
+        }
+    }
 
-		public enum SuppressionStorage
-		{
-			Project,
-			Solution,
-			Global
-		}
+    public class ProcessCreateException : Exception
+    {
+        public ProcessCreateException(int returnCode, String error, String output)
+        {
+            m_output = output;
+            m_error = error;
+        }
 
-		public enum AnalysisType { DocumentSavedAnalysis, ProjectAnalysis };
+        private int returnCode { get; }
 
-		public class ProgressEvenArgs : EventArgs
-		{
-			public ProgressEvenArgs(int progress, int filesChecked = 0, int totalFilesNumber = 0)
-			{
-				Debug.Assert(progress >= 0 && progress <= 100);
-				Progress = progress; TotalFilesNumber = totalFilesNumber;
-				FilesChecked = filesChecked;
-			}
-			public int Progress { get; set; }
-			public int FilesChecked { get; set; }
-			public int TotalFilesNumber { get; set; }
-		}
+        String m_error;
+        String m_output;
+    }
+    public abstract class ICodeAnalyzer : IDisposable
+    {
+        public enum SuppressionScope
+        {
+            suppressThisMessage,
+            suppressThisMessageSolutionWide,
+            suppressThisMessageGlobally,
+            suppressThisTypeOfMessageFileWide,
+            suppressThisTypeOfMessageProjectWide,
+            suppressThisTypeOfMessagesSolutionWide,
+            suppressThisTypeOfMessagesGlobally,
+            suppressAllMessagesThisFileProjectWide,
+            suppressAllMessagesThisFileSolutionWide,
+            suppressAllMessagesThisFileGlobally
+        };
 
-		public delegate void progressUpdatedHandler(object sender, ProgressEvenArgs e);
-		public event progressUpdatedHandler ProgressUpdated;
+        public enum SuppressionStorage
+        {
+            Project,
+            Solution,
+            Global
+        }
 
-		protected void onProgressUpdated(int progress, int filesChecked = 0, int totalFiles = 0)
-		{
-			// Make a temporary copy of the event to avoid possibility of 
-			// a race condition if the last subscriber unsubscribes 
-			// immediately after the null check and before the event is raised.
-			if (ProgressUpdated != null)
-			{
-				ProgressUpdated(this, new ProgressEvenArgs(progress, filesChecked, totalFiles));
-			}
-		}
+        public enum AnalysisType { DocumentSavedAnalysis, ProjectAnalysis };
 
-		protected ICodeAnalyzer()
-		{
-			_numCores = Environment.ProcessorCount;
-		}
+        public class ProgressEvenArgs : EventArgs
+        {
+            public ProgressEvenArgs(int progress, int filesChecked = 0, int totalFilesNumber = 0)
+            {
+                Debug.Assert(progress >= 0 && progress <= 100);
+                Progress = progress; TotalFilesNumber = totalFilesNumber;
+                FilesChecked = filesChecked;
+            }
+            public int Progress { get; set; }
+            public int FilesChecked { get; set; }
+            public int TotalFilesNumber { get; set; }
+        }
 
-		~ICodeAnalyzer()
-		{
-			Dispose(false);
-		}
+        public delegate void progressUpdatedHandler(object sender, ProgressEvenArgs e);
+        public event progressUpdatedHandler ProgressUpdated;
 
-		public abstract void analyze(List<ConfiguredFiles> configuredFiles, bool analysisOnSavedFile);
+        protected void onProgressUpdated(int progress, int filesChecked = 0, int totalFiles = 0)
+        {
+            // Make a temporary copy of the event to avoid possibility of 
+            // a race condition if the last subscriber unsubscribes 
+            // immediately after the null check and before the event is raised.
+            if (ProgressUpdated != null)
+            {
+                ProgressUpdated(this, new ProgressEvenArgs(progress, filesChecked, totalFiles));
+            }
+        }
 
-		public abstract void suppressProblem(Problem p, SuppressionScope scope);
+        public ICodeAnalyzer()
+        {
+            _numCores = Environment.ProcessorCount;
+            _threadManager = new ThreadManager(_numCores, startAnalyzerProcess);
+        }
 
-		protected abstract SuppressionsInfo readSuppressions(SuppressionStorage storage, string projectBasePath = null, string projectName = null);
+        ~ICodeAnalyzer()
+        {
+            Dispose(false);
+        }
 
-		protected abstract List<Problem> parseOutput(String output);
+        public void Dispose()
+        {
+            // Dispose of unmanaged resources.
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
-		protected abstract void analysisFinished(string arguments);
+        void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
 
-		protected void run(string analyzerExePath, List<string> arguments)
-		{
-			_allArguments = arguments;
+            if (disposing)
+            {
 
-			abortThreadIfAny();
-			MainToolWindow.Instance.clear();
-			_thread = new System.Threading.Thread(() => analyzerThreadFunc(analyzerExePath));
-			_thread.Name = "cppcheck";
-			_thread.Start();
-		}
+                // Free any other managed objects here.
+                //
+            }
+            _disposed = true;
+        }
 
-		protected static bool matchMasksList(string line, HashSet<string> masks)
-		{
-			foreach (var mask in masks)
-			{
-				Regex rgx = new Regex(mask.ToLower());
-				if (rgx.IsMatch(line.ToLower()))
-					return true;
-			}
-			return false;
-		}
+        private bool _disposed = false;
+        public abstract void analyze(List<ConfiguredFiles> configuredFiles, bool analysisOnSavedFile);
 
-		protected void addProblemsToToolwindow(List<Problem> problems)
-		{
-			if (MainToolWindow.Instance == null || problems == null)
-				return;
+        public Problem parsSeveriety(String line, String projectPath)
+        {
 
-			foreach (var problem in problems)
-				MainToolWindow.Instance.displayProblem(problem, false);
-		}
+            int severiety_start_index = line.IndexOf(": ") + ": ".Length;
+            int severiety_end_index = line.IndexOf(":", severiety_start_index);
+            String severiety = line.Substring(severiety_start_index, severiety_end_index - severiety_start_index);
+            int line_start_index = line.Substring(0, severiety_start_index).LastIndexOf("(");
+            String filePath = line.Substring(0, line_start_index);
+            line_start_index += 1;
+            int col_start_index = line.IndexOf(",", line_start_index);
+            int line_num = Int32.Parse(line.Substring(line_start_index, col_start_index - line_start_index));
+            col_start_index += 1;
+            int col_num = Int32.Parse(line.Substring(col_start_index, line.IndexOf(")", col_start_index) - col_start_index));
+            String message = line.Substring(severiety_end_index + 1);
+            return new Problem(severiety, message, filePath, line_num, col_num, projectPath);
+        }
 
-		protected void addProblemToToolwindow(Problem problem)
-		{
-			if (MainToolWindow.Instance != null && problem != null)
-				MainToolWindow.Instance.displayProblem(problem, true);
-		}
+        public Problem parseMetric(String line, String projectPath)
+        {
 
-		public static string suppressionsFilePathByStorage(SuppressionStorage storage, string projectBasePath = null, string projectName = null)
-		{
-			switch (storage)
-			{
-				case SuppressionStorage.Global:
-					return globalSuppressionsFilePath();
-				case SuppressionStorage.Solution:
-					return solutionSuppressionsFilePath();
-				case SuppressionStorage.Project:
-					Debug.Assert(!String.IsNullOrWhiteSpace(projectBasePath) && !String.IsNullOrWhiteSpace(projectName));
-					return projectSuppressionsFilePath(projectBasePath, projectName);
-				default:
-					throw new InvalidOperationException("Unsupported enum value: " + storage.ToString());
-			}
-		}
+            int message_start_index = line.IndexOf(": ") + 1;
+            int message_end_index = line.IndexOf(":", message_start_index + 1);
+            String message = line.Substring(message_start_index, message_end_index - message_start_index);
+            String severiety = "required";
+            int line_start_index = line.Substring(0, line.IndexOf(": ")).LastIndexOf("(");
+            String filePath = line.Substring(0, line_start_index);
+            line_start_index += 1;
+            int line_end_index = line.IndexOf(")", line_start_index);
+            int line_num = Int32.Parse(line.Substring(line_start_index, line_end_index - line_start_index));
+            int courrent_level_start_index = message_end_index + 2;
+            int courrent_level_end_index = line.IndexOf(";", courrent_level_start_index);
+            var current_level_str = line.Substring(courrent_level_start_index, courrent_level_end_index - courrent_level_start_index);
+            double current_level = Convert.ToDouble(current_level_str);
+            int min_level_start_index = courrent_level_end_index + "; ".Length;
+            int min_level_end_index = line.IndexOf(";", min_level_start_index);
+            double min_level = Convert.ToDouble(line.Substring(min_level_start_index, min_level_end_index - min_level_start_index));
+            int max_level_start_index = min_level_end_index + "; ".Length;
+            int max_level_end_index = line.IndexOf(" ", max_level_start_index);
+            double max_level = 0;
+            try
+            {
+                max_level = Convert.ToDouble(line.Substring(max_level_start_index, max_level_end_index - max_level_start_index));
+            }
+            catch (Exception)
+            {
+                return new Problem(severiety, $"{message} current_value is {current_level} but required to be at least {min_level}", filePath, line_num, 0, projectPath);
 
-		protected string suppressionsFilePathByScope(SuppressionScope scope, string projectBasePath = null, string projectName = null)
-		{
-			switch (scope)
-			{
-				case SuppressionScope.suppressThisMessageGlobally:
-				case SuppressionScope.suppressThisTypeOfMessagesGlobally:
-				case SuppressionScope.suppressAllMessagesThisFileGlobally:
-					return globalSuppressionsFilePath();
-				case SuppressionScope.suppressThisMessageSolutionWide:
-				case SuppressionScope.suppressThisTypeOfMessagesSolutionWide:
-				case SuppressionScope.suppressAllMessagesThisFileSolutionWide:
-					return solutionSuppressionsFilePath();
-				case SuppressionScope.suppressThisMessage:
-				case SuppressionScope.suppressThisTypeOfMessageFileWide:
-				case SuppressionScope.suppressThisTypeOfMessageProjectWide:
-				case SuppressionScope.suppressAllMessagesThisFileProjectWide:
-					return projectSuppressionsFilePath(projectBasePath, projectName);
-				default:
-					throw new InvalidOperationException("Unsupported enum value: " + scope.ToString());
-			}
-		}
+            }
 
-		public void abortThreadIfAny()
-		{
-			if (_thread != null)
-			{
-				try
-				{
-					_terminateThread = true;
-					_thread.Join();
-				}
-				catch (Exception ex)
-				{
-					DebugTracer.Trace(ex);
-				}
-				_thread = null;
-			}
-		}
+            return new Problem(severiety, $"{message} current_value is {current_level} but required to be between {min_level} and {max_level}", filePath, line_num, 0, projectPath);
+        }
 
-		private void analyzerThreadFunc(string analyzerExePath)
-		{
-			_terminateThread = false;
-			foreach (var arguments in _allArguments)
-				startAnalyzerProcess(analyzerExePath, arguments);
-		}
+        public List<Problem> parseOutput(String output, String projectPath)
+        {
+            var lines = output.Split(new[] { '\r', '\n' });
+            var problems = new List<Problem>();
+            foreach (var line in lines)
+            {
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+                try
+                {
+                    if (!line.Contains("Metric"))
+                    {
+                        problems.Add(parsSeveriety(line, projectPath));
+                    }
+                    else
+                    {
+                        problems.Add(parseMetric(line, projectPath));
+                    }
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        problems[problems.Count - 1].Message += String.Format(" {0}", line);
+                    }
+                    catch (Exception)
+                    {
 
-		private void startAnalyzerProcess(string analyzerExePath, string arguments)
-		{
-			System.Diagnostics.Process process = null;
+                    }
+                }
+            }
+            return problems;
+        }
 
-			try
-			{
-				Debug.Assert(!String.IsNullOrEmpty(analyzerExePath));
-				Debug.Assert(!String.IsNullOrEmpty(arguments));
+        public List<Problem> filterProblems(List<Problem> problems)
+        {
+            var filtered_problems = new List<Problem>();
+            foreach (var problem in problems)
+            {
+                if (!(problem.Severity.Contains("DISABLED") || problem.Severity.Contains("advisory") ||
+                    problem.Severity.Contains("low") || problem.Message.ToLower().Contains("unused field")))
+                {
+                    filtered_problems.Add(problem);
+                }
+            }
+            return filtered_problems;
+        }
 
-				process = new System.Diagnostics.Process();
-				process.StartInfo.FileName = analyzerExePath;
-				process.StartInfo.WorkingDirectory = Path.GetDirectoryName(analyzerExePath);
-				process.StartInfo.Arguments = arguments;
-				process.StartInfo.CreateNoWindow = true;
+        protected void run(SourceFile sourceFile, bool isChanged)
+        {
+            if (null != sourceFile)
+            {
+                _threadManager.Add(sourceFile, isChanged);
+            }
+        }
 
-				// Set UseShellExecute to false for output redirection.
-				process.StartInfo.UseShellExecute = false;
+        public void addProblemsToToolwindow(List<Problem> problems, String filePath, bool shouldClear)
+        {
+            CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
+            {
+                await CPPCheckPluginPackage.Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
+                if (filePath == currentWindowFilePath && shouldClear)
+                {
+                    MainToolWindow.Instance.clear();
+                    _cachedInformation[filePath].problems.Clear();
+                }
+                if (MainToolWindow.Instance == null || problems == null)
+                    return;
 
-				// Redirect the standard output of the command.
-				process.StartInfo.RedirectStandardOutput = true;
-				process.StartInfo.RedirectStandardError = true;
+                foreach (var problem in problems)
+                {
+                    _cachedInformation[filePath].problems.Add(problem);
+                    if (filePath == currentWindowFilePath)
+                    {
+                        MainToolWindow.Instance.displayProblem(problem, false);
+                    }
+                }
+            });
+        }
 
-				// Set our event handler to asynchronously read the sort output.
-				process.OutputDataReceived += new DataReceivedEventHandler(this.analyzerOutputHandler);
-				process.ErrorDataReceived += new DataReceivedEventHandler(this.analyzerOutputHandler);
+        public (String, String, System.Diagnostics.Process) runProcess(String filePath, String arguments, String workingDirectory, bool shouldOutputAsync, ManualResetEvent killEvent, String cppFile, StringDictionary environments = null)
+        {
+            if (environments == null) { environments = new StringDictionary(); };
+            System.Diagnostics.Process process = new System.Diagnostics.Process();
+            var startInfo = new ProcessStartInfo();
+            process.StartInfo.WorkingDirectory = workingDirectory;
+            process.StartInfo.Arguments = arguments;
+            process.StartInfo.FileName = filePath;
+            process.StartInfo.CreateNoWindow = true;
+            foreach (String key in environments.Keys)
+            {
+                process.StartInfo.EnvironmentVariables[key] = environments[key];
+            }
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
 
-				CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer with arguments: " + arguments + "\n");
+            StringBuilder output = new StringBuilder();
+            StringBuilder error = new StringBuilder();
+            var outputWaitHandle = new ManualResetEvent(false);
+            var errorWaitHandle = new ManualResetEvent(false);
 
-				var timer = Stopwatch.StartNew();
-				// Start the process.
-				process.Start();
+            process.OutputDataReceived += (sender, e) =>
+            {
+                if (e.Data == null)
+                {
+                    outputWaitHandle.Set();
+                }
+                else
+                {
+                    if (shouldOutputAsync)
+                    {
+                        CPPCheckPluginPackage.addTextToOutputWindow(e.Data, cppFile);
+                    }
+                    output.AppendLine(e.Data);
+                }
+            };
+            process.ErrorDataReceived += (sender, e) =>
+            {
+                if (e.Data == null)
+                {
+                    errorWaitHandle.Set();
+                }
+                else
+                {
+                    if (shouldOutputAsync)
+                    {
+                        CPPCheckPluginPackage.addTextToOutputWindow(e.Data, cppFile);
+                    }
+                    error.AppendLine(e.Data);
+                }
+            };
+            // Start the process.
+            process.Start();
 
-				try
-				{
-					process.PriorityClass = ProcessPriorityClass.Idle;
-				}
-				catch (System.InvalidOperationException)
-				{
-				}
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            // Wait for analysis completion
+            while (!(outputWaitHandle.WaitOne(500) &&
+              errorWaitHandle.WaitOne(500)))
+            {
+                if (killEvent.WaitOne(0))
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch (Exception)
+                    {
 
-				onProgressUpdated(0);
+                    }
+                    throw new ThreadAbortException();
+                }
+            }
+            if (process.ExitCode != 0)
+            {
+                throw new ProcessCreateException(process.ExitCode, output.ToString(), error.ToString());
+            }
+            return (output.ToString(), error.ToString(), process);
+        }
 
-				// Start the asynchronous read of the sort output stream.
-				process.BeginOutputReadLine();
-				process.BeginErrorReadLine();
-				// Wait for analysis completion
-				while (!process.WaitForExit(500))
-				{
-					if (_terminateThread)
-					{
-						// finally block will run anyway and do the cleanup
-						return;
-					}
-				}
-				timer.Stop();
-				analysisFinished(arguments);
-				if (process.ExitCode != 0)
-					CPPCheckPluginPackage.addTextToOutputWindow(analyzerExePath + " has exited with code " + process.ExitCode.ToString() + "\n");
-				else
-				{
-					double timeElapsed = Math.Round(timer.Elapsed.TotalSeconds, 3);
-					CPPCheckPluginPackage.addTextToOutputWindow("Analysis completed in " + timeElapsed.ToString() + " seconds\n");
-				}
-				process.Close();
-				process = null;
-			}
-			catch (Exception ex)
-			{
-				DebugTracer.Trace(ex);
-			}
-			finally
-			{
-				onProgressUpdated(100);
-				if (process != null)
-				{
-					try
-					{
-						process.Kill();
-					}
-					catch (Exception ex)
-					{
-						DebugTracer.Trace(ex);
-					}
+        public String getCafeCcCommand(SourceFile file, String outputPath)
+        {
+            String command = "-B. ";
+            foreach (var include in file.IncludePaths)
+            {
+                command += "-I\"" + include + "\"" + " ";
+            }
+            foreach (var define in file.Macros)
+            {
+                command += "-D\"" + define + "\"" + " ";
+            }
+            command += "--type_system=Windows64 --wchar_t --no_ms_permissive --ms_c++17 -c ";
+            command += String.Format("-o {0} {1}", outputPath, file.FilePath);
+            return command;
+        }
 
-					process.Dispose();
-				}
-			}
-		}
+        private String findAxivionDir(String filePath)
+        {
+            var dir = filePath;
+            while (true)
+            {
+                dir = Path.GetDirectoryName(dir);
+                var axivionDir = dir + "\\Axivion";
+                if (Directory.Exists(axivionDir))
+                {
+                    return axivionDir;
+                }
 
-		private void analyzerOutputHandler(object sendingProcess, DataReceivedEventArgs outLine)
-		{
-			if (_thread == null)
-			{
-				// We got here because the environment is shutting down, the current object was disposed and the thread was aborted.
-				return;
-			}
+                if (dir == Path.GetDirectoryName(dir))
+                {
+                    throw new FileNotFoundException(String.Format("couldn't find axivion dir {0}", filePath));
+                }
+            }
+        }
 
-			String output = outLine.Data;
-			if (!String.IsNullOrEmpty(output))
-			{
-				addProblemsToToolwindow(parseOutput(output));
-				try {
-					CPPCheckPluginPackage.addTextToOutputWindow(output + "\n");
-				}
-				catch (Exception) { }
-			}
-		}
+        public String getStyleCheckCommand(String inputIr, String axivionDir, String rfgFilePath)
+        {
+            var xml = System.Xml.Linq.XElement.Load(axivionDir + "\\build.conf");
 
-		private static string solutionSuppressionsFilePath()
-		{
-			return CPPCheckPluginPackage.solutionPath() + "\\" + CPPCheckPluginPackage.solutionName() + "_solution_suppressions.cfg";
-		}
+            var projectsItem = (from item in xml.Descendants("project")
+                                select item).ToList()[0];
 
-		private static string projectSuppressionsFilePath(string projectBasePath, string projectName)
-		{
-			Debug.Assert(!String.IsNullOrWhiteSpace(projectBasePath) && !String.IsNullOrWhiteSpace(projectName));
-			Debug.Assert(Directory.Exists(projectBasePath));
-			return projectBasePath + "\\" + projectName + "_project_suppressions.cfg";
-		}
+            var databases = (from item in projectsItem.Descendants("action")
+                             where (String)item.Attribute("tool") == "database" && (String)item.Attribute("name") == "database"
+                             select item).ToList()[0];
+            var ignore_list = (from item in databases.Descendants("input")
+                               where (String)item.Attribute("name") == "file_owners"
+                               select item).ToList()[0];
+            var ignore_list2 = (from item in ignore_list.Descendants("element")
+                                where (String)item.Attribute("value") == "__ignore__"
+                                select (String)item.Attribute("key")).ToList();
+            String ignore_command = "";
+            foreach (var rule in ignore_list2)
+            {
+                ignore_command += String.Format("-exclude \"{0}\" ", rule);
+            }
+            return $"-quiet  -unit -ir {inputIr} -rfg {rfgFilePath} {String.Join("|", ignore_command)} -vs_mode";
+        }
 
-		private static string globalSuppressionsFilePath()
-		{
-			return Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\CppcheckVisualStudioAddIn\\suppressions.cfg";
-		}
+        public virtual void runLogic(SourceFile file, ManualResetEvent killEvent)
+        {
+            var tempFile = Path.GetTempFileName();
+            try
+            {
+                var axivionDir = findAxivionDir(file.FilePath);
+                var cafeCcCommand = getCafeCcCommand(file, tempFile);
+                var processPath = "C:\\Users\\idow\\AppData\\Local\\Bauhaus\\bin\\cafeCC.exe";
+                var filePath = file.FilePath;
+                CPPCheckPluginPackage.addTextToOutputWindow(String.Format("{0} {1}", processPath, cafeCcCommand), filePath);
+                var result = runProcess(processPath, cafeCcCommand, file.BaseProjectPath, shouldOutputAsync: true, killEvent: killEvent, cppFile: filePath);
+                var error = result.Item2;
+                if (error.Contains(": error #"))
+                {
+                    Problem[] tempProblems = { new Problem("Error", error, filePath, 0, 0, file.BaseProjectPath) };
+                    addProblemsToToolwindow(tempProblems.ToList(), filePath, shouldClear: false);
+                    if (filePath == currentWindowFilePath)
+                    {
+                        MainToolWindow.Instance.bringToFront();
+                    }
+                    throw new Exception("errors found in compilation");
+                }
+                var tempFile2 = Path.GetTempFileName();
 
-		public void Dispose()
-		{
-			Dispose(true);
-		}
+                var arguments = $"{tempFile} {tempFile2}";
+                processPath = "ir2rfg";
+                CPPCheckPluginPackage.addTextToOutputWindow(String.Format("{0} {1}", processPath, arguments), filePath);
+                runProcess(processPath, arguments, ".", shouldOutputAsync: true, killEvent: killEvent, cppFile: filePath);
+                var stylecheckCommand = getStyleCheckCommand(tempFile, axivionDir, tempFile2);
+                StringDictionary env = new StringDictionary();
+                env["BAUHAUS_CONFIG"] = axivionDir;
+                processPath = "C:\\Users\\idow\\AppData\\Local\\Bauhaus\\bin\\stylecheck.exe";
+                CPPCheckPluginPackage.addTextToOutputWindow(String.Format("{0} {1}", processPath, stylecheckCommand), filePath);
+                result = runProcess(processPath, stylecheckCommand, file.BaseProjectPath, shouldOutputAsync: true, killEvent: killEvent, environments: env, cppFile: filePath);
+                var output = result.Item1;
+                error = result.Item2;
 
-		protected virtual void Dispose(bool disposing)
-		{
-			abortThreadIfAny();
-		}
+                var problems = parseOutput(output, file.BaseProjectPath);
+                problems = filterProblems(problems);
 
-		protected String _projectBasePath = null; // Base path for a project currently being checked
-		protected String _projectName = null; // Name of a project currently being checked
+                addProblemsToToolwindow(problems.GetRange(0, Math.Min(100, problems.Count)), filePath, true);
 
-		protected int _numCores;
+                if (currentWindowFilePath == filePath)
+                {
+                    MainToolWindow.Instance.bringToFront();
+                    MainToolWindow.Instance._ui.ResetSorting();
+                }
 
-		private System.Threading.Thread _thread = null;
-		private bool _terminateThread = false;
-		private List<string> _allArguments;
-	}
+            }
+            finally
+            {
+                File.Delete(tempFile);
+            }
+        }
+
+        private void startAnalyzerProcess(SourceFile sourceFile, bool isChanged, ManualResetEvent killEvent)
+        {
+            var filePath = sourceFile.FilePath;
+            if (!isChanged && _cachedInformation.Keys.Contains(filePath))
+            {
+                CPPCheckPluginPackage.addTextToOutputWindow(_cachedInformation[sourceFile.FilePath].output, filePath,
+                    shouldClear: true);
+                if (_cachedInformation[filePath].isFinished)
+                {
+                    addProblemsToToolwindow(_cachedInformation[filePath].problems.GetRange(0, _cachedInformation[filePath].problems.Count), filePath, shouldClear: true);
+                    return;
+                }
+                _cachedInformation[filePath].problems.Clear();
+            }
+            else if (!_cachedInformation.Keys.Contains(filePath))
+            {
+                _cachedInformation[filePath] = new CachedInformation();
+            }
+            if (filePath == currentWindowFilePath)
+            {
+                CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
+                {
+                    await CPPCheckPluginPackage.Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    MainToolWindow.Instance.clear();
+                });
+            }
+            try
+            {
+                onProgressUpdated(0);
+                CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer", filePath);
+                runLogic(sourceFile, killEvent);
+                CPPCheckPluginPackage.addTextToOutputWindow("Analysis completed", filePath);
+            }
+            catch (ThreadAbortException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                Problem[] problems = { new Problem("Error", e.ToString(), filePath, 0, 0, sourceFile.BaseProjectPath) };
+                addProblemsToToolwindow(problems.ToList(), filePath, shouldClear: false);
+                if (filePath == currentWindowFilePath)
+                {
+                    MainToolWindow.Instance.bringToFront();
+                }
+
+            }
+            _cachedInformation[filePath].isFinished = true;
+            onProgressUpdated(100);
+        }
+
+        private static string solutionSuppressionsFilePath()
+        {
+            return CPPCheckPluginPackage.solutionPath() + "\\" + CPPCheckPluginPackage.solutionName() + "_solution_suppressions.cfg";
+        }
+
+        private static string projectSuppressionsFilePath(string projectBasePath, string projectName)
+        {
+            Debug.Assert(!String.IsNullOrWhiteSpace(projectBasePath) && !String.IsNullOrWhiteSpace(projectName));
+            Debug.Assert(Directory.Exists(projectBasePath));
+            return projectBasePath + "\\" + projectName + "_project_suppressions.cfg";
+        }
+
+        private static string globalSuppressionsFilePath()
+        {
+            return Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\CppcheckVisualStudioAddIn\\suppressions.cfg";
+        }
+
+
+        protected string _projectBasePath = null; // Base path for a project currently being checked
+        protected string _projectName = null; // Name of a project currently being checked
+
+        protected int _numCores;
+
+        private ThreadManager _threadManager = null;
+
+        public Dictionary<string, CachedInformation> _cachedInformation = new Dictionary<string, CachedInformation>();
+        public string currentWindowFilePath;
+        public int switchedWindow = 1;
+    }
 }

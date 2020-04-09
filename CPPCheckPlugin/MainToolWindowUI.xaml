@@ -111,11 +111,6 @@
                         </Style.Triggers>
                     </Style>
                 </GridView.ColumnHeaderContainerStyle>
-                <GridViewColumn x:Name="SeverityColumn" CellTemplate="{StaticResource Template}" Width ="32">
-                    <GridViewColumn.Header>
-                        <GridViewColumnHeader Tag="Severity" Click="problemColumnHeader_Click"></GridViewColumnHeader>
-                    </GridViewColumn.Header>
-                </GridViewColumn>
                 <GridViewColumn x:Name="FileNameColumn" DisplayMemberBinding="{Binding FileName}" Width="Auto">
                     <GridViewColumn.Header>
                         <GridViewColumnHeader Tag="FileName" Click="problemColumnHeader_Click">File</GridViewColumnHeader>
@@ -126,6 +121,17 @@
                         <GridViewColumnHeader Tag="Line">Line</GridViewColumnHeader>
                     </GridViewColumn.Header>
                 </GridViewColumn>
+                <GridViewColumn x:Name="ColColumn" DisplayMemberBinding="{Binding Col}" Width="Auto">
+                    <GridViewColumn.Header>
+                        <GridViewColumnHeader Tag="Col">Col</GridViewColumnHeader>
+                    </GridViewColumn.Header>
+                </GridViewColumn>
+
+                <GridViewColumn x:Name="SeverColumn" DisplayMemberBinding="{Binding Severity}" Width="Auto">
+                    <GridViewColumn.Header>
+                        <GridViewColumnHeader Tag="Severity" Click="problemColumnHeader_Click" >Severity</GridViewColumnHeader>
+                    </GridViewColumn.Header>
+                </GridViewColumn>
                 <GridViewColumn x:Name="MessageColumn" Width="{Binding ElementName=helperField, Path=ActualWidth}">
                     <GridViewColumn.CellTemplate>
                         <DataTemplate>
@@ -133,9 +139,10 @@
                         </DataTemplate>
                     </GridViewColumn.CellTemplate>
                     <GridViewColumn.Header>
-                        <GridViewColumnHeader Tag="Message" Click="problemColumnHeader_Click" RenderTransformOrigin="2.065,0.467">Message</GridViewColumnHeader>
+                        <GridViewColumnHeader Tag="Message" Click="problemColumnHeader_Click" Width="Auto">Message</GridViewColumnHeader>
                     </GridViewColumn.Header>
                 </GridViewColumn>
+
             </GridView>
         </ListView.View>
     </ListView>

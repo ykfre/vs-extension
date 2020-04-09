@@ -3,8 +3,11 @@ using System.Windows;
 using System.Windows.Threading;
 using System.Collections.Generic;
 using System.Text;
-using System.Runtime.InteropServices;
+
+using System.ComponentModel;
+using System.Drawing;
 using System.Windows.Controls;
+using System.Runtime.InteropServices;
 using System.IO;
 using System.Diagnostics;
 using System.Windows.Input;
@@ -22,7 +25,6 @@ namespace VSPackage.CPPCheckPlugin
 		{
 			_listView = _ui.listView;
 			_ui.EditorRequestedForProblem += openProblemInEditor;
-			_ui.SuppressionRequested += suppressProblem;
 
 			Caption = "Cppcheck analysis results";
 			Content = _ui;
@@ -44,34 +46,26 @@ namespace VSPackage.CPPCheckPlugin
 
 		public void bringToFront()
 		{
-			/*
-			IVsWindowFrame frame = Frame as IVsWindowFrame;
-			if (frame == null)
-				return;
+            CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
+            {
+                await CPPCheckPluginPackage.Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
+                IVsWindowFrame frame = Frame as IVsWindowFrame;
+                if (frame == null)
+                    return;
 
-			int onScreen = 0;
-			frame.IsOnScreen(out onScreen);
-			if (onScreen == 0)
-				frame.ShowNoActivate();
-            */
+                frame.Show();
+            });
+            
 		}
-
-		public void showIfWindowNotCreated()
-		{
-			ThreadHelper.ThrowIfNotOnUIThread();
-
-			IVsWindowFrame frame = Frame as IVsWindowFrame;
-			if (frame != null && frame.IsVisible() != VSConstants.S_OK)
-				frame.Show();
-		}
+        
 
 		public void clear()
 		{
-			_listView.Items.Clear();
-			//_ui.ClearSorting();
-		}
+            _listView.Items.Clear();
+            _listView.Items.SortDescriptions.Clear();
+        }
 
-		public bool isEmpty()
+        public bool isEmpty()
 		{
 			return _listView.Items.Count == 0;
 		}
@@ -153,13 +147,7 @@ namespace VSPackage.CPPCheckPlugin
 			});
 		}
 
-		private void suppressProblem(object sender, MainToolWindowUI.SuppresssionRequestedEventArgs e)
-		{
-			if (e.Problem != null)
-				e.Problem.Analyzer.suppressProblem(e.Problem, e.Scope);
-		}
-
-		private MainToolWindowUI _ui = new MainToolWindowUI();
+		public MainToolWindowUI _ui = new MainToolWindowUI();
 		private ListView _listView = null;
 	}
 }

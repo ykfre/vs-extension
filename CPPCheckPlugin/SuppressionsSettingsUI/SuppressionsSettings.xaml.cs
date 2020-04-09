@@ -17,9 +17,7 @@ namespace VSPackage.CPPCheckPlugin.SuppressionSettingsUI
 		{
 			InitializeComponent();
 
-			suppressionsFilePath = ICodeAnalyzer.suppressionsFilePathByStorage(suppressionStorage, projectBasePath, projectName);
 			SuppressionsInfo suppressionsInfo = new SuppressionsInfo();
-			suppressionsInfo.LoadFromFile(suppressionsFilePath);
 
 			CppcheckLines.Items = suppressionsInfo.SuppressionLines;
 			FilesLines.Items = suppressionsInfo.SkippedFilesMask;

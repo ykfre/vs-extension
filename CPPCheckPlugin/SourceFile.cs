@@ -169,7 +169,7 @@ namespace VSPackage.CPPCheckPlugin
 			get { return _projectBasePath; }
 		}
 
-		public List<string> IncludePaths
+		public HashSet<string> IncludePaths
 		{
 			get { return _includePaths; }
 		}
@@ -216,7 +216,7 @@ namespace VSPackage.CPPCheckPlugin
 		private string _fullPath        = null;
 		private string _projectBasePath = null;
 		private string _projectName     = null;
-		private List<string> _includePaths = new List<string>();
+		private HashSet<string> _includePaths = new HashSet<string>();
 		private List<string> _activeMacros = new List<string>();
 		private List<string> _macrosToUndefine = new List<string>();
 		private VCCompilerVersion _compilerVersion;
