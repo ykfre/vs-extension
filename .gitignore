@@ -6,3 +6,16 @@ CPPCheckPlugin/obj
 CPPCheckPlugin.csproj.user
 storage.ide
 packages
+**/*csprojAssemblyReference.cache
+**/*TemporaryGene*
+**/*.exe
+**/*.pdb
+**/*.cache
+**/*csproj*
+/**/*.db*
+/**/*.dll
+/**/*sqlite3*
+/**/*bin*
+/**/*ipch
+/**.config*
+/**/*.config

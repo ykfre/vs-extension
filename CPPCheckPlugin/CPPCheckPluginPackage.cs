@@ -22,7 +22,7 @@ namespace VSPackage.CPPCheckPlugin
     public class CachedInformation
     {
         public List<Problem> problems = new List<Problem>();
-        public string output ="";
+        public string output = "";
         public bool isFinished = false;
     };
 
@@ -50,7 +50,7 @@ namespace VSPackage.CPPCheckPlugin
             get { return _instance; }
         }
 
-        public static async void addTextToOutputWindow(string text, string filePath, bool shouldClear=false)
+        public static async void addTextToOutputWindow(string text, string filePath, bool shouldClear = false)
         {
             try
             {
@@ -61,10 +61,10 @@ namespace VSPackage.CPPCheckPlugin
                 }
                 Instance._analyzers[0]._cachedInformation[filePath].output += text + "\n";
 
-                if(Instance._analyzers[0].currentWindowFilePath == filePath)
+                if (Instance._analyzers[0].currentWindowFilePath == filePath)
                 {
                     await Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
-                    if (0!=Interlocked.CompareExchange(ref Instance._analyzers[0].switchedWindow,value: 0,comparand:1))
+                    if (0 != Interlocked.CompareExchange(ref Instance._analyzers[0].switchedWindow, value: 0, comparand: 1))
                     {
                         Instance._outputPane.Clear();
                         Instance._outputPane.OutputString(Instance._analyzers[0]._cachedInformation[filePath].output);
@@ -182,7 +182,7 @@ namespace VSPackage.CPPCheckPlugin
                 return;
 
             _eventsHandlers = _dte.Events.DocumentEvents;
-            var events =_dte.Events.WindowEvents;
+            var events = _dte.Events.WindowEvents;
             _dte.Events.WindowEvents.WindowActivated += documentActivated;
             _eventsHandlers.DocumentSaved += documentSavedSync;
 
@@ -337,6 +337,40 @@ namespace VSPackage.CPPCheckPlugin
             thread.Start();
         }
 
+        async Task<SourceFile> getSourceFileForHFile(SourceFile file, Document document, Configuration currentConfig, dynamic project)
+        {
+
+            var items = document.ProjectItem;
+            var items2 = items.ContainingProject;
+            for (int i = 0; i < items2.ProjectItems.Count; i++)
+            {
+                var a = items2.ProjectItems.Item(i);
+                if(null == a)
+                {
+                    continue;
+                }
+                string currentFilePath = a.FileNames[0];
+                if(!currentFilePath.Contains(".cpp"))
+                {
+                    continue;
+                }
+
+                if (Path.GetFileNameWithoutExtension(file.FilePath) + ".cpp" == currentFilePath)
+                {
+                    return await createSourceFileAsync(currentFilePath, currentConfig, project);
+                }
+
+                if (file.FilePath.Contains("\\include\\tc\\") &&
+                    Path.GetDirectoryName(file.FilePath.Replace("\\include\\tc\\", "\\src\\")) +
+                    "\\" + Path.GetFileNameWithoutExtension(file.FileName ) + ".cpp"
+                      == currentFilePath)
+                {
+                    return await createSourceFileAsync(currentFilePath, currentConfig, project);
+                }
+            }
+            return null;
+        }
+
         void runOnDocument(Document document, bool isNotDocumentSwitch)
         {
 
@@ -346,10 +380,6 @@ namespace VSPackage.CPPCheckPlugin
 
                 if (document == null || document.Language != "C/C++")
                     return;
-
-                if (Settings.Default.CheckSavedFilesHasValue && Settings.Default.CheckSavedFiles == false)
-                    return;
-
                 if (document.ActiveWindow == null)
                 {
                     // We get here when new files are being created and added to the project and
@@ -377,9 +407,20 @@ namespace VSPackage.CPPCheckPlugin
                     SourceFile sourceForAnalysis = await createSourceFileAsync(document.FullName, currentConfig, project);
                     if (sourceForAnalysis == null)
                         return;
-
+                    if (sourceForAnalysis.FilePath.EndsWith(".h") || sourceForAnalysis.FilePath.EndsWith(".hpp"))
+                    {
+                        sourceForAnalysis = await getSourceFileForHFile(sourceForAnalysis,document,currentConfig,project);
+                        if(sourceForAnalysis ==null)
+                        {
+                            return;
+                        }
+                    }
                     MainToolWindow.Instance.ContentsType = ICodeAnalyzer.AnalysisType.DocumentSavedAnalysis;
-                    if(!isNotDocumentSwitch)
+                    if(!isNotDocumentSwitch && sourceForAnalysis.FilePath == _analyzers[0].currentWindowFilePath)
+                    {
+                        return;
+                    }
+                    if (!isNotDocumentSwitch)
                     {
                         _analyzers[0].currentWindowFilePath = sourceForAnalysis.FilePath;
                         _analyzers[0].switchedWindow = 1;
@@ -880,7 +921,7 @@ namespace VSPackage.CPPCheckPlugin
         private static CPPCheckPluginPackage _instance = null;
     }
 
-    
+
 }
 
 
