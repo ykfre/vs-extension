@@ -64,14 +64,21 @@ namespace VSPackage.CPPCheckPlugin
                 if (Instance._analyzers[0].currentWindowFilePath == filePath)
                 {
                     await Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
-                    if (0 != Interlocked.CompareExchange(ref Instance._analyzers[0].switchedWindow, value: 0, comparand: 1))
+                    if (filePath == Instance._analyzers[0].currentWindowFilePath)
                     {
-                        Instance._outputPane.Clear();
-                        Instance._outputPane.OutputString(Instance._analyzers[0]._cachedInformation[filePath].output);
-                    }
-                    else
-                    {
-                        Instance._outputPane.OutputString(text + "\n");
+                        if (0 != Interlocked.CompareExchange(ref Instance._analyzers[0].switchedWindow, value: 0, comparand: 1))
+                        {
+                            Instance._outputPane.Clear();
+                            Instance._outputPane.OutputString(Instance._analyzers[0]._cachedInformation[filePath].output);
+                        }
+                        else
+                        {
+                            if(shouldClear)
+                            {
+                                Instance._outputPane.Clear();
+                            }
+                            Instance._outputPane.OutputString(text + "\n");
+                        }
                     }
                 }
             }
@@ -420,9 +427,9 @@ namespace VSPackage.CPPCheckPlugin
                     {
                         return;
                     }
+                    _analyzers[0].currentWindowFilePath = sourceForAnalysis.FilePath;
                     if (!isNotDocumentSwitch)
                     {
-                        _analyzers[0].currentWindowFilePath = sourceForAnalysis.FilePath;
                         _analyzers[0].switchedWindow = 1;
                     }
                     runSavedFileAnalysis(sourceForAnalysis, currentConfig, isNotDocumentSwitch);

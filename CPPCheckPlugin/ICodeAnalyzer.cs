@@ -399,7 +399,7 @@ namespace VSPackage.CPPCheckPlugin
             {
                 var axivionDir = findAxivionDir(file.FilePath);
                 var cafeCcCommand = getCafeCcCommand(file, tempFile);
-                var processPath = "C:\\Users\\idow\\AppData\\Local\\Bauhaus\\bin\\cafeCC.exe";
+                var processPath = "cafeCC.exe";
                 var filePath = file.FilePath;
                 CPPCheckPluginPackage.addTextToOutputWindow(String.Format("{0} {1}", processPath, cafeCcCommand), filePath);
                 var result = runProcess(processPath, cafeCcCommand, file.BaseProjectPath, shouldOutputAsync: true, killEvent: killEvent, cppFile: filePath);
@@ -422,8 +422,9 @@ namespace VSPackage.CPPCheckPlugin
                 runProcess(processPath, arguments, ".", shouldOutputAsync: true, killEvent: killEvent, cppFile: filePath);
                 var stylecheckCommand = getStyleCheckCommand(tempFile, axivionDir, tempFile2);
                 StringDictionary env = new StringDictionary();
+                CPPCheckPluginPackage.addTextToOutputWindow($"BAUHAUS_CONFIG is is {axivionDir}", filePath);
                 env["BAUHAUS_CONFIG"] = axivionDir;
-                processPath = "C:\\Users\\idow\\AppData\\Local\\Bauhaus\\bin\\stylecheck.exe";
+                processPath = "stylecheck.exe";
                 CPPCheckPluginPackage.addTextToOutputWindow(String.Format("{0} {1}", processPath, stylecheckCommand), filePath);
                 result = runProcess(processPath, stylecheckCommand, file.BaseProjectPath, shouldOutputAsync: true, killEvent: killEvent, environments: env, cppFile: filePath);
                 var output = result.Item1;
@@ -432,7 +433,7 @@ namespace VSPackage.CPPCheckPlugin
                 var problems = parseOutput(output, file.BaseProjectPath);
                 problems = filterProblems(problems);
 
-                addProblemsToToolwindow(problems.GetRange(0, Math.Min(100, problems.Count)), filePath, true);
+                addProblemsToToolwindow(problems.GetRange(0, Math.Min(100, problems.Count)), filePath, shouldClear:true);
 
                 if (currentWindowFilePath == filePath)
                 {
@@ -457,6 +458,7 @@ namespace VSPackage.CPPCheckPlugin
                 if (_cachedInformation[filePath].isFinished)
                 {
                     addProblemsToToolwindow(_cachedInformation[filePath].problems.GetRange(0, _cachedInformation[filePath].problems.Count), filePath, shouldClear: true);
+                    MainToolWindow.Instance._ui.ResetSorting();
                     return;
                 }
                 _cachedInformation[filePath].problems.Clear();
@@ -476,7 +478,7 @@ namespace VSPackage.CPPCheckPlugin
             try
             {
                 onProgressUpdated(0);
-                CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer", filePath);
+                CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer", filePath, shouldClear:true);
                 runLogic(sourceFile, killEvent);
                 CPPCheckPluginPackage.addTextToOutputWindow("Analysis completed", filePath);
             }

@@ -19,7 +19,7 @@ namespace VSPackage.CPPCheckPlugin
             {
                 m_events.Add(new AutoResetEvent(false));
                 m_killEvents.Add(new ManualResetEvent(false));
-                m_killedEvents.Add(new ManualResetEvent(false));
+                m_killedEvents.Add(new AutoResetEvent(false));
                 m_currentFiles.Add(null);
                 m_changed.Add(false);
                 m_threads.Add(new Thread(threadInnerCallback));
@@ -92,8 +92,9 @@ namespace VSPackage.CPPCheckPlugin
                 m_changed[threadIndexToKill] = isChanged;
                 m_addMutex.ReleaseMutex();
                 m_killEvents[threadIndexToKill].Set();
+
                 m_killedEvents[threadIndexToKill].WaitOne();
-                m_killedEvents[threadIndexToKill].Reset();
+
                 m_killEvents[threadIndexToKill].Reset();
 
                 m_currentFiles[threadIndexToKill] = file;
@@ -126,7 +127,6 @@ namespace VSPackage.CPPCheckPlugin
                 {
                     List<WaitHandle> waitHandles;
                     waitHandles = new List<WaitHandle> { m_events[threadIndex], m_killEvents[threadIndex] };
-
 
                     int waitedIndex = WaitHandle.WaitAny(waitHandles.ToArray());
                     if (1 == waitedIndex)
@@ -164,8 +164,6 @@ namespace VSPackage.CPPCheckPlugin
                 }
                 catch (ThreadAbortException)
                 {
-                    m_currentFiles[threadIndex] = null;
-
                     m_killedEvents[threadIndex].Set();
                 }
             }
@@ -178,7 +176,7 @@ namespace VSPackage.CPPCheckPlugin
         List<bool> m_changed = new List<bool>();
         private Semaphore m_queueSemaphore;
         private List<ManualResetEvent> m_killEvents = new List<ManualResetEvent>();
-        private List<ManualResetEvent> m_killedEvents = new List<ManualResetEvent>();
+        private List<AutoResetEvent> m_killedEvents = new List<AutoResetEvent>();
         private List<Thread> m_threads = new List<Thread>();
         private List<SourceFile> m_currentFiles = new List<SourceFile>();
         private List<(SourceFile, bool)> m_queuedFiles = new List<(SourceFile, bool)>();
