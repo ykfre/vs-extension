@@ -24,13 +24,15 @@ namespace VSPackage.CPPCheckPlugin
 		public MainToolWindow() : base(null)
 		{
 			_listView = _ui.listView;
-			_ui.EditorRequestedForProblem += openProblemInEditor;
+
+            _ui.EditorRequestedForProblem += openProblemInEditor;
 
 			Caption = "Cppcheck analysis results";
 			Content = _ui;
 		}
 
-		public static MainToolWindow Instance
+
+        public static MainToolWindow Instance
 		{
 			get {
 				var package = CPPCheckPluginPackage.Instance;
@@ -115,7 +117,7 @@ namespace VSPackage.CPPCheckPlugin
 			set;
 		}
 
-		private void openProblemInEditor(object sender, MainToolWindowUI.OpenProblemInEditorEventArgs e)
+        private void openProblemInEditor(object sender, MainToolWindowUI.OpenProblemInEditorEventArgs e)
 		{
 			CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
 			{

@@ -4,6 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System;
+using System.ComponentModel;
+using System.Drawing;
+using System.Windows;
+using System.Windows.Input;
+using System.Diagnostics;
+using System.Collections.Generic;
 
 using VSPackage.CPPCheckPlugin;
 
@@ -14,12 +21,14 @@ namespace UnitTests
         static void check_parsing()
         {
             var analyzer = new AnalyzerCppcheck();
-            var problems =  analyzer.parseOutput(@"C:\Users\idow\source\repos\Project3\Project3\Source.cpp(4,2): DISABLED: required: Use of base type outside typedef. [signed int] (Rule AutosarC++18_03-A3.9.1)" +"\n" +@"C:\Users\idow\source\repos\Project3\Project3\Source.cpp(1):5: Metric.HIS.PARAM, HIS PARAM: 12.000000; 0.000000; 5.000000 VIOLATION: Routine: b", "");
+            var problems = analyzer.parseOutput(@"C:\Users\idow\source\repos\Project3\Project3\Source.cpp(4,2): DISABLED: required: Use of base type outside typedef. [signed int] (Rule AutosarC++18_03-A3.9.1)" + "\n" + @"C:\Users\idow\source\repos\Project3\Project3\Source.cpp(1):5: Metric.HIS.PARAM, HIS PARAM: 12.000000; 0.000000; 5.000000 VIOLATION: Routine: b", "",
+                axivionJsonPath: @"C:\code\cppcheck-vs-addin\CPPCheckPlugin\Resources\axivion.json",
+                autosarJsonPath: @"C:\code\cppcheck-vs-addin\CPPCheckPlugin\Resources\autosar.json");
             problems = analyzer.filterProblems(problems);
         }
         public static void Main(string[] args)
         {
-            ThreadsTests.sanity();
+            //ThreadsTests.sanity();
             check_parsing();
 
             var analyzer = new AnalyzerCppcheck();
@@ -37,7 +46,10 @@ namespace UnitTests
             sourceFile.addMacro("_MT");
             sourceFile.addMacro("_CPPUNWIND");
             sourceFile.addMacro("_UNICODE");
-            analyzer.runLogic(sourceFile, new ManualResetEvent(false));
+            analyzer.runLogic(sourceFile,
+                axivionJsonPath: @"C:\code\cppcheck-vs-addin\CPPCheckPlugin\Resources\axivion.json",
+                autosarJsonPath: @"C:\code\cppcheck-vs-addin\CPPCheckPlugin\Resources\autosar.json",
+                killEvent: new ManualResetEvent(false));
         }
     }
 }

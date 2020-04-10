@@ -73,7 +73,7 @@ namespace VSPackage.CPPCheckPlugin
                         }
                         else
                         {
-                            if(shouldClear)
+                            if (shouldClear)
                             {
                                 Instance._outputPane.Clear();
                             }
@@ -254,6 +254,23 @@ namespace VSPackage.CPPCheckPlugin
                     mcs.AddCommand(selectionsMenuItem);
                 }
 
+                string vsixDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                axivionJsonPath = vsixDir + "//" + "resources//axivion.json";
+                autosarJsonPath = vsixDir + "//" + "resources//autosar.json";
+                var thread = new System.Threading.Thread(() =>
+                {
+                    System.Threading.Thread.Sleep(1000 * 8);
+                    for (int i = 1; i <= Math.Min(7, _dte.Documents.Count); i++)
+                    {
+                        if(_dte.Documents.Item(i) == _dte.ActiveDocument)
+                        {
+                            continue;
+                        }
+                        runOnDocument(_dte.Documents.Item(i), isNotDocumentSwitch: false);
+                    }
+                    runOnDocument(_dte.ActiveDocument, isNotDocumentSwitch: true);
+                });
+                thread.Start();
 
             }
         }
@@ -352,12 +369,12 @@ namespace VSPackage.CPPCheckPlugin
             for (int i = 0; i < items2.ProjectItems.Count; i++)
             {
                 var a = items2.ProjectItems.Item(i);
-                if(null == a)
+                if (null == a)
                 {
                     continue;
                 }
                 string currentFilePath = a.FileNames[0];
-                if(!currentFilePath.Contains(".cpp"))
+                if (!currentFilePath.Contains(".cpp"))
                 {
                     continue;
                 }
@@ -369,7 +386,7 @@ namespace VSPackage.CPPCheckPlugin
 
                 if (file.FilePath.Contains("\\include\\tc\\") &&
                     Path.GetDirectoryName(file.FilePath.Replace("\\include\\tc\\", "\\src\\")) +
-                    "\\" + Path.GetFileNameWithoutExtension(file.FileName ) + ".cpp"
+                    "\\" + Path.GetFileNameWithoutExtension(file.FileName) + ".cpp"
                       == currentFilePath)
                 {
                     return await createSourceFileAsync(currentFilePath, currentConfig, project);
@@ -416,14 +433,14 @@ namespace VSPackage.CPPCheckPlugin
                         return;
                     if (sourceForAnalysis.FilePath.EndsWith(".h") || sourceForAnalysis.FilePath.EndsWith(".hpp"))
                     {
-                        sourceForAnalysis = await getSourceFileForHFile(sourceForAnalysis,document,currentConfig,project);
-                        if(sourceForAnalysis ==null)
+                        sourceForAnalysis = await getSourceFileForHFile(sourceForAnalysis, document, currentConfig, project);
+                        if (sourceForAnalysis == null)
                         {
                             return;
                         }
                     }
                     MainToolWindow.Instance.ContentsType = ICodeAnalyzer.AnalysisType.DocumentSavedAnalysis;
-                    if(!isNotDocumentSwitch && sourceForAnalysis.FilePath == _analyzers[0].currentWindowFilePath)
+                    if (!isNotDocumentSwitch && sourceForAnalysis.FilePath == _analyzers[0].currentWindowFilePath)
                     {
                         return;
                     }
@@ -925,6 +942,11 @@ namespace VSPackage.CPPCheckPlugin
 
         private const int commandEventIdSave = 331;
         private const int commandEventIdSaveAll = 224;
+        public static String axivionJsonPath;
+        public static String autosarJsonPath;
+        public static String AXIVION_GUIDE_HTML = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + "\\resources\\axivion_stylecheck_guide.pdf";
+
+        public static String AUTOSAR_GUIDE_HTML = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + "\\resources\\AUTOSAR_RS_CPP14Guidelines.pdf";
         private static CPPCheckPluginPackage _instance = null;
     }
 

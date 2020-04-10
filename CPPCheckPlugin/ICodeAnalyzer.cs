@@ -7,6 +7,12 @@ using System.IO;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Text;
+using System.Resources;
+using System.Reflection;
+using System;
+using System.Collections;
+using Newtonsoft.Json;
+using System.Collections;
 
 namespace VSPackage.CPPCheckPlugin
 {
@@ -85,8 +91,9 @@ namespace VSPackage.CPPCheckPlugin
 
         public ICodeAnalyzer()
         {
+
             _numCores = Environment.ProcessorCount;
-            _threadManager = new ThreadManager(_numCores, startAnalyzerProcess);
+            _threadManager = new ThreadManager(3, startAnalyzerProcess);
         }
 
         ~ICodeAnalyzer()
@@ -170,7 +177,24 @@ namespace VSPackage.CPPCheckPlugin
             return new Problem(severiety, $"{message} current_value is {current_level} but required to be between {min_level} and {max_level}", filePath, line_num, 0, projectPath);
         }
 
-        public List<Problem> parseOutput(String output, String projectPath)
+        int getProblemPage(Problem problem, String pagesFile)
+        {
+            using (StreamReader r = new StreamReader(pagesFile))
+            {
+                string json = r.ReadToEnd();
+                var items = JsonConvert.DeserializeObject< Dictionary<string, int>>(json);
+                foreach (var rule in items.Keys)
+                {
+                    if (problem.Message.Contains(rule))
+                    {
+                        return items[rule];
+                    }
+                }
+                return 0;
+            }
+        }
+
+        public List<Problem> parseOutput(String output, String projectPath, String autosarJsonPath, String axivionJsonPath)
         {
             var lines = output.Split(new[] { '\r', '\n' });
             var problems = new List<Problem>();
@@ -202,6 +226,14 @@ namespace VSPackage.CPPCheckPlugin
 
                     }
                 }
+            }
+
+            foreach (var problem in problems)
+            {
+                int problemPage = getProblemPage(problem, axivionJsonPath);
+                problem.AxivionAddress = CPPCheckPluginPackage.AXIVION_GUIDE_HTML + $"#page={problemPage}";
+                problemPage = getProblemPage(problem, autosarJsonPath);
+                problem.AutosarAddress = CPPCheckPluginPackage.AUTOSAR_GUIDE_HTML + $"#page={problemPage}";
             }
             return problems;
         }
@@ -392,7 +424,7 @@ namespace VSPackage.CPPCheckPlugin
             return $"-quiet  -unit -ir {inputIr} -rfg {rfgFilePath} {String.Join("|", ignore_command)} -vs_mode";
         }
 
-        public virtual void runLogic(SourceFile file, ManualResetEvent killEvent)
+        public virtual void runLogic(SourceFile file, String autosarJsonPath, String axivionJsonPath, ManualResetEvent killEvent)
         {
             var tempFile = Path.GetTempFileName();
             try
@@ -430,10 +462,10 @@ namespace VSPackage.CPPCheckPlugin
                 var output = result.Item1;
                 error = result.Item2;
 
-                var problems = parseOutput(output, file.BaseProjectPath);
+                var problems = parseOutput(output, file.BaseProjectPath, autosarJsonPath, axivionJsonPath);
                 problems = filterProblems(problems);
 
-                addProblemsToToolwindow(problems.GetRange(0, Math.Min(100, problems.Count)), filePath, shouldClear:true);
+                addProblemsToToolwindow(problems.GetRange(0, Math.Min(100, problems.Count)), filePath, shouldClear: true);
 
                 if (currentWindowFilePath == filePath)
                 {
@@ -450,6 +482,11 @@ namespace VSPackage.CPPCheckPlugin
 
         private void startAnalyzerProcess(SourceFile sourceFile, bool isChanged, ManualResetEvent killEvent)
         {
+            // Should be removed in the future
+            if(null == sourceFile)
+            {
+                return;
+            }
             var filePath = sourceFile.FilePath;
             if (!isChanged && _cachedInformation.Keys.Contains(filePath))
             {
@@ -478,8 +515,9 @@ namespace VSPackage.CPPCheckPlugin
             try
             {
                 onProgressUpdated(0);
-                CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer", filePath, shouldClear:true);
-                runLogic(sourceFile, killEvent);
+                CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer", filePath, shouldClear: true);
+                runLogic(sourceFile, autosarJsonPath: CPPCheckPluginPackage.autosarJsonPath, 
+                    axivionJsonPath: CPPCheckPluginPackage.axivionJsonPath,killEvent: killEvent);
                 CPPCheckPluginPackage.addTextToOutputWindow("Analysis completed", filePath);
             }
             catch (ThreadAbortException)

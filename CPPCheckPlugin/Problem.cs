@@ -8,7 +8,8 @@ namespace VSPackage.CPPCheckPlugin
 {
     public class Problem
     {
-        public Problem(String severity, String message, String file, int line, int col, String baseProjectPath)
+        public Problem(String severity, String message, String file, int line, int col, String baseProjectPath,
+            String axivionAddress="", String autosarAddress="")
         {
             _severity = severity;
             _message = message;
@@ -16,6 +17,18 @@ namespace VSPackage.CPPCheckPlugin
             _line = line;
             _col = col;
             _baseProjectPath = baseProjectPath;
+            AutosarAddress = autosarAddress;
+            AxivionAddress = axivionAddress;
+        }
+
+        public String AutosarAddress
+        {
+            get;set;
+        }
+
+        public String AxivionAddress
+        {
+            get;set;
         }
 
         public String Severity

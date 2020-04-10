@@ -143,6 +143,33 @@
                     </GridViewColumn.Header>
                 </GridViewColumn>
 
+                <GridViewColumn x:Name="AutosarColumn" Width="{Binding ElementName=helperField, Path=ActualWidth}">
+                    <GridViewColumnHeader Tag="Autosar" Width="Auto">Autosar</GridViewColumnHeader>
+
+                    <GridViewColumn.CellTemplate>
+                        <DataTemplate>
+                        <TextBlock>
+      <Hyperlink NavigateUri="{Binding Path=AutosarWeb}" RequestNavigate="Hyperlink_OnRequestNavigate">
+        <TextBlock Text="link"/>
+      </Hyperlink>
+    </TextBlock>
+                        </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                </GridViewColumn>
+
+                <GridViewColumn x:Name="AxivionColumn" Width="{Binding ElementName=helperField, Path=ActualWidth}">
+                    <GridViewColumnHeader Tag="Axivion" Width="Auto">Axivion</GridViewColumnHeader>
+
+                    <GridViewColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock>
+      <Hyperlink NavigateUri="{Binding Path=AxivionWeb}" RequestNavigate="Hyperlink_OnRequestNavigate">
+        <TextBlock Text="link"/>
+      </Hyperlink>
+    </TextBlock>
+                        </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                </GridViewColumn>
             </GridView>
         </ListView.View>
     </ListView>

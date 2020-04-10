@@ -11,6 +11,8 @@ using System.Windows.Media.Imaging;
 using System.Diagnostics;
 using System.Collections.Generic;
 
+using System.Windows.Navigation;
+
 namespace VSPackage.CPPCheckPlugin
 {
     /// <summary>
@@ -46,6 +48,15 @@ namespace VSPackage.CPPCheckPlugin
         public MainToolWindowUI()
         {
             InitializeComponent();
+        }
+
+
+
+        private void Hyperlink_OnRequestNavigate(object sender, RequestNavigateEventArgs e)
+        {
+            var url = e.Uri.ToString();
+            OpenUrl(url);
+            e.Handled = true;
         }
 
         private void menuItem_suppressThisMessageProjectWide(object sender, RoutedEventArgs e)
@@ -107,6 +118,19 @@ namespace VSPackage.CPPCheckPlugin
             }
         }
 
+        private void OpenUrl(string url)
+        {
+            try
+            {
+                url = url.Replace(" ", "%20");
+                url = url.Replace("%23", "#");
+                Process.Start("C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", url);
+            }
+            catch(Exception e)
+            {
+            }
+        }
+
         private void onProblemDoubleClick(object sender, MouseButtonEventArgs e)
         {
             var objectClicked = FindVisualParent<ListViewItem, ListView>(e.OriginalSource as DependencyObject);
@@ -115,7 +139,9 @@ namespace VSPackage.CPPCheckPlugin
 
             ProblemsListItem item = listView.ItemContainerGenerator.ItemFromContainer(objectClicked) as ProblemsListItem;
             if (item != null)
+            {
                 EditorRequestedForProblem(this, new OpenProblemInEditorEventArgs(item.Problem));
+            }
         }
 
         public static TParent FindVisualParent<TParent, TLimit>(DependencyObject obj) where TParent : DependencyObject
@@ -227,6 +253,16 @@ namespace VSPackage.CPPCheckPlugin
             public String Severity
             {
                 get { return _problem.Severity; }
+            }
+
+            public String AutosarWeb
+            {
+                get { return _problem.AutosarAddress; }
+            }
+
+            public String AxivionWeb
+            {
+                get { return _problem.AxivionAddress; }
             }
 
             public ImageSource Icon
