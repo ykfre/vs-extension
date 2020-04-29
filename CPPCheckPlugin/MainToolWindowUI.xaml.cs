@@ -9,6 +9,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Diagnostics;
+using System;
+using System.IO;
+using System.Text;
 using System.Collections.Generic;
 
 using System.Windows.Navigation;
@@ -45,6 +48,8 @@ namespace VSPackage.CPPCheckPlugin
 
         private Dictionary<String, int> _columns_order = new Dictionary<String, int>();
 
+        public Dictionary<String, List<int>> FilesLines = new Dictionary<String, List<int>>();
+
         public MainToolWindowUI()
         {
             InitializeComponent();
@@ -64,57 +69,83 @@ namespace VSPackage.CPPCheckPlugin
             menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisMessage);
         }
 
-        private void menuItem_suppressThisMessageSolutionWide(object sender, RoutedEventArgs e)
+        private string getSupressionMessage(ProblemsListItem problem)
         {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisMessageSolutionWide);
+            if (problem.MessageType.Contains("Metric"))
+            {
+                return $"// Argus Waiver Metric{problem.MessageType}:please justify here.\r\n";
+            }
+            return $"// Argus Waiver {problem.MessageType}:please justify here.\r\n";
         }
 
-        private void menuItem_suppressThisMessageGlobally(object sender, RoutedEventArgs e)
+        private int calculateNeededLine(ProblemsListItem problem)
         {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisMessageGlobally);
-        }
-
-        private void menuItem_suppressThisTypeOfMessageGlobally(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisTypeOfMessagesGlobally);
-        }
-        private void menuItem_suppressThisTypeOfMessageFileWide(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisTypeOfMessageFileWide);
-        }
-
-        private void menuItem_suppressThisTypeOfMessageProjectWide(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisTypeOfMessageProjectWide);
-        }
-
-        private void menuItem_suppressThisTypeOfMessageSolutionWide(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressThisTypeOfMessagesSolutionWide);
-        }
-
-        private void menuItem_suppressAllMessagesThisFileProjectWide(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressAllMessagesThisFileProjectWide);
-        }
-
-        private void menuItem_suppressAllMessagesThisFileSolutionWide(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressAllMessagesThisFileSolutionWide);
-        }
-
-        private void menuItem_suppressAllMessagesThisFileGlobally(object sender, RoutedEventArgs e)
-        {
-            menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope.suppressAllMessagesThisFileGlobally);
+            int counter = 0;
+            if(FilesLines[problem.FilePath] ==null)
+            {
+                return problem.Line - 1;
+            }
+            FilesLines[problem.FilePath].Sort();
+            for (int i=0;i< FilesLines[problem.FilePath].Count;i++)
+            {
+                if(FilesLines[problem.FilePath][i] <= problem.Line - 1)
+                {
+                    counter += 1;
+                }
+            }
+            return problem.Line - 1 + counter;
         }
 
         private void menuItem_SuppressSelected(ICodeAnalyzer.SuppressionScope scope)
         {
             var selectedItems = listView.SelectedItems;
-            foreach (ProblemsListItem item in selectedItems)
+            foreach (ProblemsListItem problem in selectedItems)
             {
-                if (item != null)
-                    SuppressionRequested(this, new SuppresssionRequestedEventArgs(item.Problem, scope));
+                if (problem != null)
+                {
+
+                    var view = Vsix.GetVsTextViewFrompPath(problem.Problem.FilePath);
+                    if(null == view)
+                    {
+                        return;
+                    }
+                    var view2 = Vsix.VsToWpfTextView(view);
+
+
+                    var text = view2.TextBuffer.CurrentSnapshot.GetText();
+                    int index = 0;
+                    string line;
+                    var splittedLines = new List<string>();
+                    using (StringReader sr = new StringReader(text))
+                    {
+                        while ((line = sr.ReadLine()) != null)
+                        {
+                            splittedLines.Add(line);
+                        }
+                    }
+                    var needed_line = calculateNeededLine(problem);
+                    if(problem.Line - 1 >= splittedLines.Count)
+                    {
+                        continue;
+                    }
+                    for(int i=0;i< needed_line; i++)
+                    {
+                        index += "\r\n".Length + splittedLines[i].Length;
+                    }
+                    List<int> prevLines ;
+                    FilesLines.TryGetValue(problem.FilePath, out prevLines);
+                    if(null == prevLines)
+                    {
+                        prevLines = new List<int>();
+                    }
+                    prevLines.Add(problem.Line - 1);
+                    FilesLines[problem.FilePath] = prevLines;
+                    var edit = view2.TextBuffer.CreateEdit();
+                    var span = new Microsoft.VisualStudio.Text.Span(0,text.Length);
+                    var newText = text.Substring(0, index) + getSupressionMessage(problem) + text.Substring(index);
+                    edit.Replace(span, newText);
+                    edit.Apply();
+                }
             }
         }
 
@@ -240,6 +271,11 @@ namespace VSPackage.CPPCheckPlugin
                 get { return _problem.FileName; }
             }
 
+            public String FilePath
+            {
+                get { return _problem.FilePath; }
+            }
+
             public int Line
             {
                 get { return _problem.Line; }
@@ -263,6 +299,11 @@ namespace VSPackage.CPPCheckPlugin
             public String AxivionWeb
             {
                 get { return _problem.AxivionAddress; }
+            }
+
+            public String MessageType
+            {
+                get { return _problem.MessageType; }
             }
 
             public ImageSource Icon

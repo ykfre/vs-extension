@@ -57,6 +57,16 @@ namespace VSPackage.CPPCheckPlugin
             }
         }
 
+        public String MessageType
+        {
+            get
+            {
+                int start_index = Message.LastIndexOf("(") + "(Rule ".Length;
+                
+                return Message.Substring(start_index, Message.Length - 1 - start_index);
+            }
+        }
+
         public String FilePath
         {
             get

@@ -374,7 +374,7 @@ namespace VSPackage.CPPCheckPlugin
             }
             foreach (var define in file.Macros)
             {
-                command += "-D\"" + define + "\"" + " ";
+                command += "-D_MT " + "-D\"" + define + "\"" + " ";
             }
             command += "--type_system=Windows64 --wchar_t --no_ms_permissive --ms_c++17 -c ";
             command += String.Format("-o {0} {1}", outputPath, file.FilePath);
@@ -486,6 +486,10 @@ namespace VSPackage.CPPCheckPlugin
             if(null == sourceFile)
             {
                 return;
+            }
+            if(isChanged)
+            {
+                MainToolWindow.Instance._ui.FilesLines[sourceFile.FilePath] = new List<int>();
             }
             var filePath = sourceFile.FilePath;
             if (!isChanged && _cachedInformation.Keys.Contains(filePath))

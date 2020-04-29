@@ -259,16 +259,29 @@ namespace VSPackage.CPPCheckPlugin
                 autosarJsonPath = vsixDir + "//" + "resources//autosar.json";
                 var thread = new System.Threading.Thread(() =>
                 {
-                    System.Threading.Thread.Sleep(1000 * 8);
+                    for (int i = 0; i < 100; i++)
+                    {
+                        try
+                        {
+                            var a = _dte.Documents.Count;
+                            break;
+                        }
+                        catch (Exception)
+                        {
+                            System.Threading.Thread.Sleep(500);
+                        }
+                    }
                     for (int i = 1; i <= Math.Min(7, _dte.Documents.Count); i++)
                     {
-                        if(_dte.Documents.Item(i) == _dte.ActiveDocument)
+                        if (_dte.Documents.Item(i) == _dte.ActiveDocument)
                         {
                             continue;
                         }
+
                         runOnDocument(_dte.Documents.Item(i), isNotDocumentSwitch: false);
                     }
                     runOnDocument(_dte.ActiveDocument, isNotDocumentSwitch: true);
+
                 });
                 thread.Start();
 
@@ -423,7 +436,6 @@ namespace VSPackage.CPPCheckPlugin
                     catch (Exception) { currentConfig = null; }
                     if (currentConfig == null)
                     {
-                        MessageBox.Show("Cannot perform check - no valid configuration selected", "Cppcheck error");
                         return;
                     }
 
@@ -723,7 +735,7 @@ namespace VSPackage.CPPCheckPlugin
                 Configuration configuration = await getConfigurationAsync(o);
                 if (configuration == null)
                 {
-                    MessageBox.Show("Cannot perform check - no valid configuration selected", "Cppcheck error");
+
                     return;
                 }
 
