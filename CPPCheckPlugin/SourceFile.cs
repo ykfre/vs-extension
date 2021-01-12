@@ -9,61 +9,12 @@ namespace VSPackage.CPPCheckPlugin
 {
 	public class SourceFile
 	{
-		public enum VCCompilerVersion { vc2003, vc2005, vc2008, vc2010, vc2012, vc2013, vc2015, vc2017, vc2019, vcFuture };
 
 		public SourceFile(string fullPath, string projectBasePath, string projectName, string vcCompilerName)
 		{
 			_fullPath = cleanPath(fullPath);
 			_projectBasePath = cleanPath(projectBasePath);
 			_projectName = projectName;
-
-			// Parsing the number
-			String vcToolsNumberString = Regex.Match(vcCompilerName, @"\d+").Value;
-			int vcToolsNumber = Int32.Parse(vcToolsNumberString);
-
-			if (string.IsNullOrEmpty(vcCompilerName)) // Temporary workaround for #27
-			{
-				Debug.WriteLine("Couldn't extract VC tools name from project properties");
-				_compilerVersion = VCCompilerVersion.vc2012;
-			}
-			else if (vcToolsNumber < 2003) // an even older version, still setting to vc2003 for now
-				_compilerVersion = VCCompilerVersion.vc2003;
-			else
-			{
-				switch (vcToolsNumber)
-				{
-					case 2003:
-						_compilerVersion = VCCompilerVersion.vc2003;
-						break;
-					case 2005:
-						_compilerVersion = VCCompilerVersion.vc2005;
-						break;
-					case 2008:
-						_compilerVersion = VCCompilerVersion.vc2008;
-						break;
-					case 2010:
-						_compilerVersion = VCCompilerVersion.vc2010;
-						break;
-					case 2012:
-						_compilerVersion = VCCompilerVersion.vc2012;
-						break;
-					case 2013:
-						_compilerVersion = VCCompilerVersion.vc2013;
-						break;
-					case 2015:
-						_compilerVersion = VCCompilerVersion.vc2015;
-						break;
-					case 2017:
-						_compilerVersion = VCCompilerVersion.vc2017;
-						break;
-					case 2019:
-						_compilerVersion = VCCompilerVersion.vc2019;
-						break;
-					default:
-						_compilerVersion = VCCompilerVersion.vcFuture;
-						break;
-				}
-			}
 		}
 
 		// All include paths being added are resolved against projectBasePath
@@ -184,11 +135,6 @@ namespace VSPackage.CPPCheckPlugin
 			get { return _macrosToUndefine; }
 		}
 
-		public VCCompilerVersion vcCompilerVersion
-		{
-			get { return _compilerVersion; }
-		}
-
 		private static string cleanPath(string path)
 		{
 			string result = path.Replace("\"", "");
@@ -219,7 +165,6 @@ namespace VSPackage.CPPCheckPlugin
 		private HashSet<string> _includePaths = new HashSet<string>();
 		private List<string> _activeMacros = new List<string>();
 		private List<string> _macrosToUndefine = new List<string>();
-		private VCCompilerVersion _compilerVersion;
 	}
 
 	public class ConfiguredFiles {

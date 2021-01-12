@@ -190,8 +190,6 @@ namespace VSPackage.CPPCheckPlugin
 
             _eventsHandlers = _dte.Events.DocumentEvents;
             var events = _dte.Events.WindowEvents;
-            _dte.Events.WindowEvents.WindowActivated += documentActivated;
-            _eventsHandlers.DocumentSaved += documentSavedSync;
 
             _commandEventsHandlers = _dte.Events.CommandEvents;
             _commandEventsHandlers.BeforeExecute += new _dispCommandEvents_BeforeExecuteEventHandler(CommandEvents_BeforeExecute);
@@ -257,34 +255,6 @@ namespace VSPackage.CPPCheckPlugin
                 string vsixDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
                 axivionJsonPath = vsixDir + "//" + "resources//axivion.json";
                 autosarJsonPath = vsixDir + "//" + "resources//autosar.json";
-                var thread = new System.Threading.Thread(() =>
-                {
-                    for (int i = 0; i < 100; i++)
-                    {
-                        try
-                        {
-                            var a = _dte.Documents.Count;
-                            break;
-                        }
-                        catch (Exception)
-                        {
-                            System.Threading.Thread.Sleep(500);
-                        }
-                    }
-                    for (int i = 1; i <= Math.Min(7, _dte.Documents.Count); i++)
-                    {
-                        if (_dte.Documents.Item(i) == _dte.ActiveDocument)
-                        {
-                            continue;
-                        }
-
-                        runOnDocument(_dte.Documents.Item(i), isNotDocumentSwitch: false);
-                    }
-                    runOnDocument(_dte.ActiveDocument, isNotDocumentSwitch: true);
-
-                });
-                thread.Start();
-
             }
         }
 
