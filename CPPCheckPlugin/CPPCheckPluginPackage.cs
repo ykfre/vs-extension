@@ -61,25 +61,21 @@ namespace VSPackage.CPPCheckPlugin
                 }
                 Instance._analyzers[0]._cachedInformation[filePath].output += text + "\n";
 
-                if (Instance._analyzers[0].currentWindowFilePath == filePath)
+
+                await Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                if (0 != Interlocked.CompareExchange(ref Instance._analyzers[0].switchedWindow, value: 0, comparand: 1))
                 {
-                    await Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
-                    if (filePath == Instance._analyzers[0].currentWindowFilePath)
+                    Instance._outputPane.Clear();
+                    Instance._outputPane.OutputString(Instance._analyzers[0]._cachedInformation[filePath].output);
+                }
+                else
+                {
+                    if (shouldClear)
                     {
-                        if (0 != Interlocked.CompareExchange(ref Instance._analyzers[0].switchedWindow, value: 0, comparand: 1))
-                        {
-                            Instance._outputPane.Clear();
-                            Instance._outputPane.OutputString(Instance._analyzers[0]._cachedInformation[filePath].output);
-                        }
-                        else
-                        {
-                            if (shouldClear)
-                            {
-                                Instance._outputPane.Clear();
-                            }
-                            Instance._outputPane.OutputString(text + "\n");
-                        }
+                        Instance._outputPane.Clear();
                     }
+                    Instance._outputPane.OutputString(text + "\n");
                 }
             }
             catch (Exception e)
@@ -422,11 +418,7 @@ namespace VSPackage.CPPCheckPlugin
                         }
                     }
                     MainToolWindow.Instance.ContentsType = ICodeAnalyzer.AnalysisType.DocumentSavedAnalysis;
-                    if (!isNotDocumentSwitch && sourceForAnalysis.FilePath == _analyzers[0].currentWindowFilePath)
-                    {
-                        return;
-                    }
-                    _analyzers[0].currentWindowFilePath = sourceForAnalysis.FilePath;
+                    
                     if (!isNotDocumentSwitch)
                     {
                         _analyzers[0].switchedWindow = 1;

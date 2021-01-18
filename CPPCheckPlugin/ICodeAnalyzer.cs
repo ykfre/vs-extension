@@ -182,7 +182,7 @@ namespace VSPackage.CPPCheckPlugin
             using (StreamReader r = new StreamReader(pagesFile))
             {
                 string json = r.ReadToEnd();
-                var items = JsonConvert.DeserializeObject< Dictionary<string, int>>(json);
+                var items = JsonConvert.DeserializeObject<Dictionary<string, int>>(json);
                 foreach (var rule in items.Keys)
                 {
                     if (problem.Message.Contains(rule))
@@ -256,7 +256,7 @@ namespace VSPackage.CPPCheckPlugin
         {
             if (null != sourceFile)
             {
-                _threadManager.Add(sourceFile, isChanged);
+                _threadManager.Add(sourceFile, true);
             }
         }
 
@@ -265,7 +265,7 @@ namespace VSPackage.CPPCheckPlugin
             CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
             {
                 await CPPCheckPluginPackage.Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
-                if (filePath == currentWindowFilePath && shouldClear)
+                if (shouldClear)
                 {
                     MainToolWindow.Instance.clear();
                     _cachedInformation[filePath].problems.Clear();
@@ -276,10 +276,8 @@ namespace VSPackage.CPPCheckPlugin
                 foreach (var problem in problems)
                 {
                     _cachedInformation[filePath].problems.Add(problem);
-                    if (filePath == currentWindowFilePath)
-                    {
-                        MainToolWindow.Instance.displayProblem(problem, false);
-                    }
+
+                    MainToolWindow.Instance.displayProblem(problem, false);
                 }
             });
         }
@@ -440,10 +438,8 @@ namespace VSPackage.CPPCheckPlugin
                 {
                     Problem[] tempProblems = { new Problem("Error", error, filePath, 0, 0, file.BaseProjectPath) };
                     addProblemsToToolwindow(tempProblems.ToList(), filePath, shouldClear: false);
-                    if (filePath == currentWindowFilePath)
-                    {
-                        MainToolWindow.Instance.bringToFront();
-                    }
+
+                    MainToolWindow.Instance.bringToFront();
                     throw new Exception("errors found in compilation");
                 }
                 var tempFile2 = Path.GetTempFileName();
@@ -467,11 +463,9 @@ namespace VSPackage.CPPCheckPlugin
 
                 addProblemsToToolwindow(problems.GetRange(0, Math.Min(100, problems.Count)), filePath, shouldClear: true);
 
-                if (currentWindowFilePath == filePath)
-                {
-                    MainToolWindow.Instance.bringToFront();
-                    MainToolWindow.Instance._ui.ResetSorting();
-                }
+
+                MainToolWindow.Instance.bringToFront();
+                MainToolWindow.Instance._ui.ResetSorting();
 
             }
             finally
@@ -483,11 +477,11 @@ namespace VSPackage.CPPCheckPlugin
         private void startAnalyzerProcess(SourceFile sourceFile, bool isChanged, ManualResetEvent killEvent)
         {
             // Should be removed in the future
-            if(null == sourceFile)
+            if (null == sourceFile)
             {
                 return;
             }
-            if(isChanged)
+            if (isChanged)
             {
                 MainToolWindow.Instance._ui.FilesLines[sourceFile.FilePath] = new List<int>();
             }
@@ -508,20 +502,18 @@ namespace VSPackage.CPPCheckPlugin
             {
                 _cachedInformation[filePath] = new CachedInformation();
             }
-            if (filePath == currentWindowFilePath)
+
+            CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
             {
-                CPPCheckPluginPackage.Instance.JoinableTaskFactory.Run(async () =>
-                {
-                    await CPPCheckPluginPackage.Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
-                    MainToolWindow.Instance.clear();
-                });
-            }
+                await CPPCheckPluginPackage.Instance.JoinableTaskFactory.SwitchToMainThreadAsync();
+                MainToolWindow.Instance.clear();
+            });
             try
             {
                 onProgressUpdated(0);
                 CPPCheckPluginPackage.addTextToOutputWindow("Starting analyzer", filePath, shouldClear: true);
-                runLogic(sourceFile, autosarJsonPath: CPPCheckPluginPackage.autosarJsonPath, 
-                    axivionJsonPath: CPPCheckPluginPackage.axivionJsonPath,killEvent: killEvent);
+                runLogic(sourceFile, autosarJsonPath: CPPCheckPluginPackage.autosarJsonPath,
+                    axivionJsonPath: CPPCheckPluginPackage.axivionJsonPath, killEvent: killEvent);
                 CPPCheckPluginPackage.addTextToOutputWindow("Analysis completed", filePath);
             }
             catch (ThreadAbortException)
@@ -532,10 +524,7 @@ namespace VSPackage.CPPCheckPlugin
             {
                 Problem[] problems = { new Problem("Error", e.ToString(), filePath, 0, 0, sourceFile.BaseProjectPath) };
                 addProblemsToToolwindow(problems.ToList(), filePath, shouldClear: false);
-                if (filePath == currentWindowFilePath)
-                {
-                    MainToolWindow.Instance.bringToFront();
-                }
+                MainToolWindow.Instance.bringToFront();
 
             }
             _cachedInformation[filePath].isFinished = true;
@@ -568,7 +557,6 @@ namespace VSPackage.CPPCheckPlugin
         private ThreadManager _threadManager = null;
 
         public Dictionary<string, CachedInformation> _cachedInformation = new Dictionary<string, CachedInformation>();
-        public string currentWindowFilePath;
         public int switchedWindow = 1;
     }
 }
