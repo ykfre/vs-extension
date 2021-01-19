@@ -26,16 +26,19 @@ namespace VSPackage.CPPCheckPlugin
 
     public class ProcessCreateException : Exception
     {
-        public ProcessCreateException(int returnCode, String error, String output)
+        public ProcessCreateException(string command, String error, String output)
         {
             m_output = output;
             m_error = error;
+            m_command = command;
         }
-
-        private int returnCode { get; }
-
-        String m_error;
-        String m_output;
+        public override string ToString()
+        {
+            return m_command + "\n" + m_output + "\n" + m_error + "\n";
+        }
+        public string m_command;
+        public string m_error;
+        public string m_output;
     }
     public abstract class ICodeAnalyzer : IDisposable
     {
@@ -334,8 +337,15 @@ namespace VSPackage.CPPCheckPlugin
                     error.AppendLine(e.Data);
                 }
             };
-            // Start the process.
-            process.Start();
+            try
+            {
+                // Start the process.
+                process.Start();
+            }
+            catch (Exception e)
+            {
+                throw new ProcessCreateException(filePath + " " + arguments, e.Message, "");
+            }
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
@@ -358,7 +368,7 @@ namespace VSPackage.CPPCheckPlugin
             }
             if (process.ExitCode != 0)
             {
-                throw new ProcessCreateException(process.ExitCode, output.ToString(), error.ToString());
+                throw new ProcessCreateException(filePath + " " + arguments, output.ToString(), error.ToString());
             }
             return (output.ToString(), error.ToString(), process);
         }
@@ -519,6 +529,14 @@ namespace VSPackage.CPPCheckPlugin
             catch (ThreadAbortException)
             {
                 throw;
+            }
+
+            catch (ProcessCreateException e)
+            {
+                Problem[] problems = { new Problem("Error", e.ToString() + "\n" + e.m_output + "\n" + e.m_error, filePath, 0, 0, sourceFile.BaseProjectPath) };
+                addProblemsToToolwindow(problems.ToList(), filePath, shouldClear: false);
+                MainToolWindow.Instance.bringToFront();
+
             }
             catch (Exception e)
             {
